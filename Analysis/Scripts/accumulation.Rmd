@@ -1,0 +1,96 @@
+Load libraries
+```{r}
+source("../General/general_functions.R")
+library(vegan)
+library(tidyverse)
+```
+
+Load data and format
+```{r}
+map <- read.csv("../Data/210201_natres_meta.csv", header = T, skip = 1)
+map <- map %>% 
+  rename("SampleID" = "sampleID")
+
+otu <- read.csv("../Data/210201_natres_norm.csv", header = T)
+row.names(otu) <- otu$contig
+otu <- otu[,-1]
+otu <- otu[,colnames(otu) %in% map$SampleID]
+```
+
+
+Separate by habitat
+```{r}
+chp.map <- filter(map, gen_habitat == "chaparral")
+chp.otu <- otu[,colnames(otu) %in% chp.map$SampleID]
+chp.otu <- chp.otu[rowSums(chp.otu)>0,]
+
+grs.map <- filter(map, gen_habitat == "grassland")
+grs.otu <- otu[,colnames(otu) %in% grs.map$SampleID]
+grs.otu <- grs.otu[rowSums(grs.otu)>0,]
+
+wet.map <- filter(map, gen_habitat == "wetland")
+wet.otu <- otu[,colnames(otu) %in% wet.map$SampleID]
+wet.otu <- wet.otu[rowSums(wet.otu)>0,]
+
+woo.map <- filter(map, gen_habitat == "woodland")
+woo.otu <- otu[,colnames(otu) %in% woo.map$SampleID]
+woo.otu <- woo.otu[rowSums(woo.otu)>0,]
+```
+
+Get the accumulation curves for all datasets and reformat
+```{r}
+chp.sp <- specaccum(t(chp.otu), method = "random", permutations = 100)
+chp.perm <- chp.sp$perm
+chp.perm.tidy <- as.tibble(chp.perm) %>% 
+  mutate(Sites = 1:nrow(.)) %>% 
+  gather(key = "Permutation", value = "Species", -Sites) 
+chp.richness <- data.frame(Sites = chp.sp$sites, Species = chp.sp$richness)
+
+grs.sp <- specaccum(t(grs.otu), method = "random", permutations = 100)
+grs.perm <- grs.sp$perm
+grs.perm.tidy <- as.tibble(grs.perm) %>% 
+  mutate(Sites = 1:nrow(.)) %>% 
+  gather(key = "Permutation", value = "Species", -Sites) 
+grs.richness <- data.frame(Sites = grs.sp$sites, Species = grs.sp$richness)
+
+wet.sp <- specaccum(t(wet.otu), method = "random", permutations = 100)
+wet.perm <- wet.sp$perm
+wet.perm.tidy <- as.tibble(wet.perm) %>% 
+  mutate(Sites = 1:nrow(.)) %>% 
+  gather(key = "Permutation", value = "Species", -Sites) 
+wet.richness <- data.frame(Sites = wet.sp$sites, Species = wet.sp$richness)
+
+woo.sp <- specaccum(t(woo.otu), method = "random", permutations = 100)
+woo.perm <- woo.sp$perm
+woo.perm.tidy <- as.tibble(woo.perm) %>% 
+  mutate(Sites = 1:nrow(.)) %>% 
+  gather(key = "Permutation", value = "Species", -Sites) 
+woo.richness <- data.frame(Sites = woo.sp$sites, Species = woo.sp$richness)
+```
+
+Plot accumulation curves
+```{r}
+perm.tidy <- rbind(mutate(chp.perm.tidy, Habitat = "chaparral"),
+                   mutate(grs.perm.tidy, Habitat = "grassland"),
+                   mutate(wet.perm.tidy, Habitat = "wetland"),
+                   mutate(woo.perm.tidy, Habitat = "woodland")) %>% 
+  mutate(Habitat = fct_relevel(Habitat, "grassland", "chaparral", "woodland", "wetland")) 
+richness <- rbind(mutate(chp.richness, Habitat = "chaparral"),
+                   mutate(grs.richness, Habitat = "grassland"),
+                   mutate(wet.richness, Habitat = "wetland"),
+                   mutate(woo.richness, Habitat = "woodland")) %>% 
+  mutate(Habitat = fct_relevel(Habitat, "grassland", "chaparral", "woodland", "wetland")) 
+
+acc.p <- ggplot(perm.tidy, aes(Sites, Species, color = Habitat)) +
+  geom_point(alpha = 0.2, size = 1) +
+  geom_line(data = richness, size = 1) +
+  scale_color_brewer(name = "", palette = "Set2") +
+  xlim(0,16) +
+  ylab("Cumulative richness\n(# vOTUs)") +
+  xlab("Sampling effort\n(# samples)") +
+  theme_light() +
+  theme(text = element_text(size = 12),
+        legend.position = "top",
+        panel.border = element_blank()) 
+acc.p
+```

@@ -1,0 +1,151 @@
+Load libraries
+```{r}
+source("../General/general_functions.R")
+library(tidyverse)
+```
+
+Load data and format
+```{r}
+map <- read.csv("../Data/210201_natres_meta.csv", header = T, skip = 1)
+map <- map %>% 
+  rename("SampleID" = "sampleID")
+
+otu <- read.csv("../Data/210201_natres_norm.csv", header = T)
+row.names(otu) <- otu$contig
+otu <- otu[,-1]
+otu <- otu[,colnames(otu) %in% map$SampleID]
+otu <- otu[rowSums(otu)>0,]
+```
+
+Calculate the occurrence of each vOTU, i.e., the number of samples in which a vOTU was detected
+```{r}
+otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  group_by(OTU_ID) %>% 
+  summarise(Occurrence = n()) %>% 
+  ggplot(aes(Occurrence)) +
+  geom_bar() +
+  theme_bw() +
+  theme(text = element_text(size = 15))
+```
+
+It seems most vOTUs were detected only once. Let's see if those that were detected more than once came from the same site/habitat or from multiple ones
+```{r}
+otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  group_by(OTU_ID) %>% 
+  mutate(SampleOccurrence = n()) %>% 
+  inner_join(map, by = "SampleID") %>% 
+  group_by(natres_site, gen_habitat, OTU_ID) %>% 
+  mutate(SiteOccurrence = n()) %>% 
+  mutate(Detection = ifelse(SampleOccurrence == SiteOccurrence, "Single Site/Habitat", "Multiple Site/Habitats")) %>% 
+  group_by(Detection, OTU_ID) %>% 
+  count() %>% 
+  group_by(Detection) %>% 
+  count()
+```
+
+
+It looks like 48 came from multiple site/habitats, whle 3367 were found in a single site/habitat. Let's put that in a plot
+```{r}
+otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  group_by(OTU_ID) %>% 
+  mutate(SampleOccurrence = n()) %>% 
+  inner_join(map, by = "SampleID") %>% 
+  group_by(natres_site, gen_habitat, OTU_ID) %>% 
+  mutate(SiteOccurrence = n()) %>% 
+  mutate(Detection = ifelse(SampleOccurrence == SiteOccurrence, "Single Site/Habitat (3,367 vOTUs)", "Multiple Site/Habitats (48 vOTUs)")) %>% 
+  group_by(SampleOccurrence, Detection, OTU_ID) %>% 
+  count() %>% 
+  group_by(SampleOccurrence, Detection) %>% 
+  count() %>% 
+  ggplot(aes(SampleOccurrence, n, fill = Detection)) +
+  geom_bar(stat = "identity") +
+  xlab("Occurrence (Number of samples)") +
+  ylab("Number of vOTUs") +
+  scale_fill_manual(values = c("salmon", "gray35")) +
+  scale_x_continuous(breaks = 1:6) +
+  theme_bw()+
+  theme(text = element_text(size = 15),
+        legend.position = c(0.8, 0.7))
+```
+Let's update the plot and show the types of habitat for those vOTUs that were detected in a single habitat
+```{r}
+otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  group_by(OTU_ID) %>% 
+  mutate(SampleOccurrence = n()) %>% 
+  inner_join(map, by = "SampleID") %>% 
+  group_by(gen_habitat, OTU_ID) %>% 
+  mutate(HabitatOccurrence = n()) %>% 
+  mutate(Detection = ifelse(SampleOccurrence == HabitatOccurrence, as.character(gen_habitat), "multiple habitats")) %>%
+  group_by(SampleOccurrence, Detection, OTU_ID) %>% 
+  count() %>% 
+  group_by(SampleOccurrence, Detection) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(Detection = fct_relevel(Detection, "multiple habitats","grassland", "chaparral", "woodland", "wetland")) %>% 
+  ggplot(aes(SampleOccurrence, n, fill = Detection)) +
+  geom_bar(stat = "identity") +
+  xlab("Occurrence (# samples)") +
+  ylab("Number of vOTUs") +
+  scale_fill_manual(values = c("gray25", RColorBrewer::brewer.pal(4, "Set2"))) +
+  scale_x_continuous(breaks = 1:6) +
+  theme_bw()+
+  theme(text = element_text(size = 12),
+        legend.position = c(0.8, 0.7))
+```
+Donut plot showing the distribution of vOTUs that were detected in more than one sample
+```{r}
+#Calculate the number of vOTUs with occupancy > 1 for each single/multiple habitat/site combination
+detection.df <- otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  group_by(OTU_ID) %>% 
+  mutate(SampleOcc = n()) %>% 
+  filter(SampleOcc > 1) %>% 
+  inner_join(map, by = "SampleID") %>% 
+  group_by(OTU_ID, natres_site) %>% 
+  mutate(SiteOcc = n()) %>%
+  group_by(OTU_ID, gen_habitat) %>% 
+  mutate(HabitatOcc = n()) %>%
+  ungroup() %>% 
+  arrange(OTU_ID) %>% 
+  mutate(HabitatDetection = ifelse(HabitatOcc == SampleOcc, "single habitat", "multiple habitats"),
+         SiteDetection = ifelse(SiteOcc == SampleOcc, "single site", "multiple sites")) %>% 
+  mutate(Detection = paste(HabitatDetection, SiteDetection, sep = " / ")) %>% 
+  group_by(OTU_ID, Detection) %>% 
+  count() %>% 
+  group_by(Detection) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(Fraction = n / sum(.$n))
+
+#Get the total number of vOTUs with occupancy > 1
+total.df <- data.frame(total = sum(detection.df$n))
+
+#Plot
+detection.df %>% 
+  mutate(ymax = cumsum(.$Fraction)) %>% 
+  mutate(ymin = c(0, ymax[1:nrow(detection.df) - 1])) %>% 
+  mutate(mid = ymin + (ymax-ymin)/2) %>% 
+  ggplot() +
+  geom_rect(aes(ymax=ymax, ymin=ymin, xmax= 4, xmin= 3, fill= Detection)) +
+  geom_text(aes(4.5, mid, label = n), size = 5) +
+  geom_text(data = total.df, aes(2, 0, label = total.df), size = 7) +
+  guides(fill = guide_legend(ncol = 1)) +
+  coord_polar(theta="y") + 
+  scale_fill_manual(name = "Occurrence > 1", values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  xlim(c(2, 5)) +
+  theme_void() +
+  theme(text = element_text(size = 12),
+        legend.position = "right",
+        strip.background = element_blank(),
+        strip.text = element_blank())
+```
+

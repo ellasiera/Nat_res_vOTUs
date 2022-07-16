@@ -1,0 +1,31 @@
+﻿sampleID,Sample,natres_site,site_ID,gen_habitat,spec_habitat,Date,Time,GPS,Temp_F,Temp_C
+BB_1_1_S79,BB 1-1,Bodega Bay,BB1,wetland,brackish wetland,16-Nov-19,9:35,N 38° 19.087; W 123° 03.439',53,11.66666667
+BB_1_2_S80,BB 1-2,Bodega Bay,BB1,wetland,brackish wetland,16-Nov-19,9:45,N 38° 19.091'; W 123° 03.443',54,12.22222222
+BB_2_1_S14,BB 2-1,Bodega Bay,BB2,wetland,saltwater wetland,16-Nov-19,10:06,N 38° 18.962'; W 123° 03.412',58,14.44444444
+BB_2_2_S31,BB 2-2,Bodega Bay,BB2,wetland,saltwater wetland,16-Nov-19,10:15,N 38° 18.954'; W 123° 03.401',58,14.44444444
+BB_3_1_S81,BB 3-1,Bodega Bay,BB3,wetland,freshwater wetland,16-Nov-19,10:35,N 38° 19.120'; W 123° 04.181',57,13.88888889
+BB_4_1_S82,BB 4-1,Bodega Bay,BB4,grassland,none,16-Nov-19,11:10,N 38° 18.914'; W 123° 04.121',55,12.77777778
+BB_4_2_S83,BB 4-2,Bodega Bay,BB4,grassland,none,16-Nov-19,11:20,N 38° 18.909'; W 123° 04.133',58,14.44444444
+BB_5_1_S84,BB 5-1,Bodega Bay,BB5,grassland,none,16-Nov-19,11:45,N 38° 19.223'; W 123° 04.481',60,15.55555556
+BB_5_2_S85,BB 5-2,Bodega Bay,BB5,grassland,none,16-Nov-19,11:52,N 38° 19.232'; W 123° 04.491',60,15.55555556
+JP_1_1_S88,JP 1-1,Jepsen Prairie,JP1,grassland,none,16-Nov-19,15:06,N 38° 16.110'; W 121° 49.459',70,21.11111111
+JP_1_2_S89,JP 1-2,Jepsen Prairie,JP1,grassland,none,16-Nov-19,15:13,N 38° 16.099'; W 121° 49.463',68,20
+JP_2_1_S44,JP 2-1,Jepsen Prairie,JP2,grassland,none,16-Nov-19,15:09,N 38° 16.115'; W 121° 49.456',74,23.33333333
+JP_2_2_S32,JP 2-2,Jepsen Prairie,JP2,grassland,none,16-Nov-19,15:19,N 38° 16.102'; W 121° 49.469',76,24.44444444
+JP_3_1_S45,JP 3-1,Jepsen Prairie,JP3,wetland,freshwater wetland,16-Nov-19,15:35,N 38° 17.045'; W 121° 49.354',60,15.55555556
+JP_3_2_S46,JP 3-2,Jepsen Prairie,JP3,wetland,freshwater wetland,16-Nov-19,15:45,N 38° 17.025'; W 121° 49.339',60,15.55555556
+McL_1_1_S77,McL 1-1,McLaughlin,McL1,woodland,blue oak,15-Nov-19,9:40,N 38° 52.479' ; W 122° 25.579',67,19.44444444
+McL_1_2_S78,McL 1-2,McLaughlin,McL1,woodland,blue oak,15-Nov-19,9:55,N 38° 52.473' ; W 122° 25.539',64,17.77777778
+McL_3_1_S30,McL 3-1,McLaughlin,McL3,grassland,non-serpentine grassland,15-Nov-19,11:17,N 38° 51.982' ; W 122° 24.292',62,16.66666667
+McL_3_2_S13,McL 3-2,McLaughlin,McL3,grassland,non-serpentine grassland,15-Nov-19,11:25,N 38° 51.990' ; W 122° 24.286',66,18.88888889
+McL_5_1_S40,McL 5-1,McLaughlin,McL5,grassland,non-serpentine grassland,15-Nov-19,12:07,N 38° 52.535' ; W 122° 25.161',70,21.11111111
+McL_5_2_S41,McL 5-2,McLaughlin,McL5,grassland,non-serpentine grassland,15-Nov-19,12:11,N 38° 52.533' ; W 122° 25.150',60,15.55555556
+McL_6_1_S42,McL 6-1,McLaughlin,McL6,chaparral,non-serpentine chaparral,15-Nov-19,13:10,N 38° 52.939' ; W 122° 27.056',58,14.44444444
+McL_6_2_S43,McL 6-2,McLaughlin,McL6,chaparral,non-serpentine chaparral,15-Nov-19,13:12,N 38° 52.934' ; W 122° 27.056',58,14.44444444
+QR_1_1_S74,QR 1-1,Quail Ridge,QR1,chaparral,chamise chaparral,14-Nov-19,16:05,N 38° 28.972' ; W 122° 8.11',68,20
+QR_1_2_S75,QR 1-2,Quail Ridge,QR1,chaparral,chamise chaparral,14-Nov-19,16:15,N 38° 28.969' ; W 122° 8.899',66,18.88888889
+QR_2_2_S76,QR 2-2,Quail Ridge,QR2,woodland,blue oak?,14-Nov-19,16:30,N 38° 28.989' ; W 122° 8.922',60,15.55555556
+SCC_1_1_S37,SCC 1-1,Stebbins Cold Canyon,SCC1,grassland,none,14-Nov-19,15:00,N 38° 52.439' ; W 122° 25.872',65,18.33333333
+SCC_1_2_S73,SCC 1-2,Stebbins Cold Canyon,SCC1,grassland,none,14-Nov-19,15:05,N 38° 30.522' ; W 122° 5.812',65,18.33333333
+SCC_2_1_S38,SCC 2-1,Stebbins Cold Canyon,SCC2,woodland,blue oak?,14-Nov-19,15:25,N 38° 30.430' ; W 122° 5.883',70,21.11111111
+SCC_2_2_S39,SCC 2-2,Stebbins Cold Canyon,SCC2,woodland,blue oak?,14-Nov-19,15:35,N 38° 30.436' ; W 122° 5.875',70,21.11111111

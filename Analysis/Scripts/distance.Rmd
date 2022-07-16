@@ -1,0 +1,173 @@
+Load libraries
+```{r}
+source("../General/general_functions.R") 
+library(cowplot)
+library(tidyverse)
+```
+Load data and format
+```{r}
+map <- read.csv("../Data/210201_natres_meta.csv", header = T, skip = 1)
+
+map <- map %>% 
+  rename("SampleID" = "sampleID")
+
+otu <- read.csv("../Data/210201_natres_norm.csv", header = T)
+
+row.names(otu) <- otu$contig
+otu <- otu[,-1]
+otu <- otu[,colnames(otu) %in% map$SampleID]
+```
+
+Calculate spatial distance
+```{r}
+#Generate a matrix with the coordinates recorded for each sample
+mtx <- map %>% 
+  select(SampleID,GPS) %>% 
+  mutate(GPS = str_replace_all(GPS, "N | W |\\°|\\'", "")) %>% 
+  separate(GPS, c("lat", "lon"), sep = ";") %>% 
+  mutate(lon = paste("-", lon, sep = "")) %>% 
+  mutate(lat_d = as.numeric(measurements::conv_unit(lat, from = 'deg_dec_min', to = 'dec_deg')),
+         lon_d = as.numeric(measurements::conv_unit(lon, from = 'deg_dec_min', to = 'dec_deg'))) %>% 
+  select(SampleID, lon_d, lat_d) %>% 
+  as.data.frame()
+
+row.names(mtx) <- mtx$SampleID
+mtx <- mtx[,-1]
+mtx <- as.matrix(mtx)
+mtx
+
+#Calculate a matrix with the pairwise spatial distance
+spatial.dist <- geosphere::distm(mtx, mtx) %>% as.data.frame()
+row.names(spatial.dist) <- row.names(mtx)
+colnames(spatial.dist) <- row.names(mtx)
+
+#Remove redundant values
+spatial.dist[upper.tri(spatial.dist, diag = F)] <- NA 
+
+#Generate a long data frame with pairwise spatial distances
+spatial.dist.tidy <- spatial.dist %>% 
+  mutate(SampleID.x = row.names(.)) %>% 
+  gather(key = "SampleID.y", value = "SpatialDistance", -SampleID.x) %>% 
+  mutate(SpatialDistance = SpatialDistance/1000) %>% 
+  filter(!is.na(SpatialDistance))
+
+spatial.dist.tidy
+```
+
+Calculate Jaccard similarities between samples. There is so little overlap in the vOTUs detected between sites that a presence/absence metric makes more sense than Bray-Curtis
+```{r}
+#Calculate Jaccard distances
+jac <- vegan::vegdist(t(otu), method = "jaccard")
+#Convert it to similarities
+jac <- 1- jac
+
+#Generate a long data frame with the results
+jac.tidy <- jac %>% 
+  as.matrix() %>% 
+  as.data.frame() %>% 
+  mutate(SampleID.x = row.names(.)) %>% 
+  gather(key = "SampleID.y", value = "JacSim", -SampleID.x)
+
+#Merge spatial and Jaccard data frames and reformat
+spatial.jaccard.tidy <- spatial.dist.tidy %>% 
+  inner_join(jac.tidy, by = c("SampleID.x", "SampleID.y")) %>% 
+  filter(SpatialDistance > 0) %>% 
+  inner_join(map, by = c("SampleID.x" = "SampleID")) %>% 
+  inner_join(map, by = c("SampleID.y" = "SampleID")) %>% 
+  mutate(HabitatDetection = ifelse(gen_habitat.x == gen_habitat.y, "single habitat", "mutliple habitats"),
+         SiteDetection = ifelse(natres_site.x == natres_site.y, "single site", "multiple sites")) %>% 
+  mutate(Detection = paste(HabitatDetection, SiteDetection, sep = " / "))
+```
+
+Plot figures with spatial distance boxplot and Jaccard rank dot plot. There's two versions: one in which the boxplot only includes pairs of samples with Jaccard similarities > 0, another one with all the data points
+```{r}
+#Make boxplot showing the distributions of spatial distances excluding all the pairwise comparisons with no overlap in the vOTUs detected (Jaccard Sim > 0)
+box.filt.p <- spatial.jaccard.tidy %>% 
+  filter(JacSim > 0) %>% 
+  ggplot(aes(1, SpatialDistance)) +
+  geom_boxplot() + 
+  geom_jitter(aes(color = Detection), width = 0.1, height = 0, alpha = 0.8) +
+  scale_color_manual(values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  xlab("") +
+  ylab("Pairwise spatial distance (km)") +
+  ylim(-10,120) +
+  theme_minimal() +
+  theme(text = element_text(size = 15),
+        axis.text.x = element_blank(),
+        legend.position = "none",
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())
+
+#Make boxplot showing the distributions of spatial distances with all the data points
+box.all.p <- spatial.jaccard.tidy %>% 
+  ggplot(aes(1, SpatialDistance)) +
+  geom_boxplot() + 
+  geom_jitter(aes(color = Detection), width = 0.1, height = 0, alpha = 0.8) +
+  scale_color_manual(values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  xlab("") +
+  ylab("Pairwise spatial distance (km)") +
+  ylim(-10,120) +
+  theme_minimal() +
+  theme(text = element_text(size = 15),
+        axis.text.x = element_blank(),
+        legend.position = "none",
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank())
+
+#Make a plot showing the rank of each pairwise comparison based on the similarity between communities, color-coded by whether the comparison involved samples between multiple/single habitats/sites
+dot.rank.p <- spatial.jaccard.tidy %>% 
+  filter(JacSim > 0) %>%
+  mutate(Rank = rank(-JacSim)) %>%
+  ggplot(aes(Rank, SpatialDistance)) +
+  geom_point(aes(size = JacSim, color = Detection), shape = 16, alpha = 0.8) +
+  scale_color_manual(name = "Group", values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  xlab("Community similarity rank") +
+  ylim(-10,120) +
+  labs(size = "Jaccard similarity") +
+  theme_minimal() +
+  theme(text = element_text(size = 15),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank())
+
+plot_grid(box.all.p, dot.rank.p, nrow = 1, rel_widths = c(1,4), align = "vh", axis = "bt")
+plot_grid(box.filt.p, dot.rank.p, nrow = 1, rel_widths = c(1,4), align = "vh", axis = "bt")
+```
+
+Plot figures with spatial distance boxplot, Jaccard similarity dot plot, and Jaccard similarity histogram. There's two versions: one in which the boxplot only includes pairs of samples with Jaccard similarities > 0, another one with all the data points
+```{r}
+#Make a plot showing the Jaccard similarity (log transformed) between pairs of communities, color-coded by whether the comparison involved samples between multiple/single habitats/sites
+dot.jac.p <- spatial.jaccard.tidy %>% 
+  filter(JacSim > 0) %>%
+  ggplot(aes(-log10(JacSim), SpatialDistance)) +
+  geom_point(aes(color = Detection), shape = 16, alpha = 0.8) +
+  scale_color_manual(name = "Group", values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  xlab("Jaccard similarity\n(-log10)") +
+  ylim(-10,120) +
+  theme_minimal() +
+  theme(text = element_text(size = 15),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none")
+
+#Make a histogram showing the distribution of types of samples across the spatial distance data. Include only comparisons where Jaccard similarity > 0
+hist.p <- spatial.jaccard.tidy %>% 
+  filter(JacSim > 0) %>%
+  ggplot(aes(SpatialDistance)) +
+  geom_histogram(aes(fill = Detection), binwidth = 12) +
+  scale_fill_manual(name = "Group", values = c("dodgerblue4", "dodgerblue1", "goldenrod3", "goldenrod1")) +
+  ylab("Number of\npaired samples") +
+  xlim(-10,120) +
+  labs(size = "Jaccard similarity") +
+  theme_minimal() +
+  theme(text = element_text(size = 15),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank()) +
+  coord_flip()
+
+plot_grid(box.all.p, dot.jac.p, hist.p, nrow = 1, align = "vh", rel_widths = c(1,2,4))
+plot_grid(box.filt.p, dot.jac.p, hist.p, nrow = 1, align = "vh", rel_widths = c(1,2,4))
+```
+
+
+
+

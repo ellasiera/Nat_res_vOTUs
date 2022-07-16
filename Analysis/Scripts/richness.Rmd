@@ -1,0 +1,444 @@
+Load libraries
+```{r}
+setwd("~/Dropbox/UCDavis/NatRes/Analysis/Scripts/")
+source("../General/general_functions.R")
+library(tidyverse)
+library(RColorBrewer)
+library(ComplexUpset)
+```
+
+Load mapping file and vOTU data and reformat
+```{r}
+map <- read.csv("../Data/210201_natres_meta.csv", header = T)
+map <- map %>% 
+  rename("SampleID" = "sampleID")
+
+v.otu <- read.csv("../Data/210201_natres_norm.csv", header = T)
+row.names(v.otu) <- v.otu$contig
+v.otu <- v.otu[,-1]
+v.otu <- v.otu[,colnames(v.otu) %in% map$SampleID]
+```
+
+Plot vOTU richness and test for differences between habitats. I used the Games Howell test to account for uneven sample size between habitats. Maybe update.
+```{r}
+#Generate a data frame with the richness data across samples
+v.rich <- v.otu %>% 
+  tidy_otu() %>% 
+  filter(Count > 0) %>% 
+  inner_join(map, by = "SampleID") %>% 
+  group_by(SampleID, gen_habitat, natres_site) %>% 
+  summarise(richness = n()) %>% 
+  ungroup() %>% 
+  mutate(gen_habitat = fct_relevel(gen_habitat, "wetland", "grassland", "chaparral", "woodland")) 
+
+#Run model
+v.aov <- lmerTest::lmer(richness ~ (1|natres_site) + gen_habitat, v.rich) %>% anova() %>% broom::tidy()
+v.aov
+#Test
+rstatix::games_howell_test(v.rich, richness ~ gen_habitat)
+
+#Plot - 
+#v.rich$gen_habitat <- factor(v.rich$gen_habitat, levels=c("wetland", "grassland", "chaparral", "woodland"))
+v.rich.p <- v.rich %>% 
+  ggplot(aes(gen_habitat, richness)) +
+  geom_boxplot(aes(color = gen_habitat, fill = gen_habitat), outlier.shape = NA, size = 1) +
+  geom_text(data = v.aov, aes(0.55, max(v.rich$richness), label = paste("Habitat:\nP = ", round(p.value, digits = 3))), hjust = 0, vjust = 1, size = 4) +
+  xlab("Habitat") +
+  ylab("Viral richness\n(# vOTUs)") +
+  scale_color_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  scale_fill_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "none")
+
+v.rich.dat <- ggplot_build(v.rich.p)$data[[1]]
+v.rich.p <- v.rich.p + 
+  geom_segment(data=v.rich.dat, aes(x=xmin, xend=xmax, 
+                               y=middle, yend=middle), colour="white", size=1) +
+  geom_jitter(color = "gray25", width = 0.1, height = 0, size = 1) 
+
+v.rich.p
+```
+
+Boxplot separated by site
+```{r}
+v.rich %>% 
+  ggplot(aes(gen_habitat, richness)) +
+  geom_boxplot(aes(color = natres_site)) + 
+  xlab("Habitat") +
+  ylab("Viral richness\n(# vOTUs)") +
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "right")
+```
+
+Same analysis but with the percent of virome reads classified as 16S rRNA
+```{r}
+#Load data and reformat
+b.otu <- read.csv("../Data/rrna_perc.csv", header = T) %>% 
+  filter(gen_habitat != "bluff") %>% 
+  mutate(gen_habitat = fct_relevel(gen_habitat, "wetland", "grassland", "chaparral", "woodland")) 
+b.otu <- b.otu[,-1]
+
+#Model
+b.aov <- lmerTest::lmer(percent_rrna ~ (1|natres_site) + gen_habitat, b.otu) %>% anova() %>% broom::tidy()
+#Test
+rstatix::games_howell_test(b.otu, percent_rrna ~ gen_habitat)
+
+#Plot
+rrna.p <- b.otu %>% 
+  ggplot(aes(gen_habitat, percent_rrna)) +
+  geom_boxplot(aes(color = gen_habitat, fill = gen_habitat), outlier.shape = NA, size = 1) +
+  geom_text(data = b.aov, aes(0.55, max(b.otu$percent_rrna), label = paste("Habitat:\nP = ", round(p.value, digits = 3))), hjust = 0, vjust = 1, size = 4) +
+  xlab("Habitat") +
+  ylab("16S rRNA gene content\n(% reads)") +
+  scale_color_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  scale_fill_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "none")
+
+rrna.dat <- ggplot_build(rrna.p)$data[[1]]
+
+rrna.p <- rrna.p + 
+  geom_segment(data=rrna.dat, aes(x=xmin, xend=xmax, 
+                               y=middle, yend=middle), colour="white", size=1) +
+  geom_jitter(color = "gray25", width = 0.1, height = 0, size = 1) 
+
+rrna.p
+ggsave("../../fig1_D_reord.pdf")
+```
+Put it all together
+```{r}
+cowplot::plot_grid(v.rich.p, rrna.p, nrow = 1, labels = c("A","B"), label_size = 15, align = "vh", axis = "lrbt")
+```
+
+Similar analysis but this time with the number of contigs classified as viral by VIBRANT
+```{r}
+#Load data and reformat
+contig <- read.csv("../Data/raw_data_richness.csv", header = T) %>% 
+  filter(gen_habitat != "bluff") %>% 
+  mutate(gen_habitat = fct_relevel(gen_habitat, "wetland", "grassland", "chaparral", "woodland")) %>% 
+  filter(!is.na(rmphix))
+
+colnames(contig)[6] <- "vibrant"
+
+#Model
+c.aov <- lmerTest::lmer(vibrant ~ (1|natres_site) + gen_habitat, contig) %>% anova() %>% broom::tidy()
+#Test
+rstatix::games_howell_test(contig, vibrant ~ gen_habitat)
+
+#Plot
+contig.p <- contig %>% 
+  ggplot(aes(gen_habitat, vibrant)) +
+  geom_boxplot(aes(color = gen_habitat, fill = gen_habitat), outlier.shape = NA, size = 1) +
+  geom_text(data = c.aov, aes(0.55, max(contig$vibrant), label = paste("Habitat:\nP = ", round(p.value, digits = 3))), hjust = 0, vjust = 1, size = 4) +
+  xlab("Habitat") +
+  ylab("Viral contigs") +
+  scale_color_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  scale_fill_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "none")
+
+contig.dat <- ggplot_build(contig.p)$data[[1]]
+
+contig.p <- contig.p + 
+  geom_segment(data=contig.dat, aes(x=xmin, xend=xmax, 
+                               y=middle, yend=middle), colour="white", size=1) +
+  geom_jitter(color = "gray25", width = 0.1, height = 0, size = 1) 
+
+contig.p
+ggsave("../../fig1_B_reord.pdf") 
+```
+```{r}
+#Load WARD metadata and water content data and merge
+meta <- read.csv("../Data/WARD.csv", stringsAsFactors = F)
+WC <- read.csv("../Data/Soil_Moisture_NatRes.csv", stringsAsFactors = F) %>% 
+  filter(Habitat != "bluff") %>% 
+  mutate(Habitat = fct_relevel(Habitat, "wetland", "grassland", "chaparral", "woodland"))
+WC <- rename(WC, SampleID = sample)
+WC$SampleID <- toupper(WC$SampleID)
+WC$SampleID <- gsub(" ", "_", gsub("-", "_", WC$SampleID))
+meta <- merge(meta, WC)
+write.csv(meta, "../../sup_tbl_1.csv")
+
+contig$samp <- gsub("_S[0-9]*$", "", contig$name) %>% toupper()
+meta <- merge(meta, contig[, c("samp", "vibrant")], by.x="SampleID", by.y="samp")
+rownames(meta) <- meta$SampleID
+meta <- meta %>%
+  dplyr::select(-c("SampleID", "SampleID2", "X", "Lime", "Water_weight"))
+summary(lm(vibrant ~ ., data = meta))
+
+v.rich$samp <- gsub("_S.*", "", v.rich$SampleID) %>% toupper()
+WC <- merge(WC, v.rich, by.x="SampleID", by.y="samp")
+fit_WC <- lm(richness~Water_content+Habitat, data=WC)
+summary(fit_WC)
+
+# Nonparametric regression
+if(!require(mblm)){install.packages("mblm")}
+library(mblm)
+
+model.k = mblm(richness~Water_content, 
+               data=WC)
+
+cor.test(WC$richness, WC$Water_content, method = "spearman", alternative = "greater")
+cor.test(WC$richness, WC$Water_content, method = "kendall", alternative = "greater")
+
+summary(model.k)
+ggplot(WC, aes(Water_content, richness, color=Habitat)) + geom_point() + geom_abline(slope=model.k$coefficients[2], intercept=model.k$coefficients[1])
+
+# Rerun with richness based on vOTU table
+```
+```{r}
+aov_wc  <- aov(Water_content~Habitat, data=WC)
+summary(aov_wc)
+aov_wc_tk <- TukeyHSD(aov_wc)
+
+water.p <- WC %>% 
+  ggplot(aes(Habitat, Water_content)) +
+  geom_boxplot(aes(color = Habitat, fill = Habitat), outlier.shape = NA, size = 1) +
+  geom_text(data = c.aov, aes(0.55, max(WC$Water_content), label = paste("Habitat P < 0.001 ")), hjust = 0, vjust = 1, size = 4) +
+  xlab("Habitat") +
+  ylab("Water Content (% dry weight)") +
+  scale_color_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  scale_fill_manual(values=brewer.pal(n=4,"Set2")[c(4,1,2,3)]) +
+  #scale_color_brewer(palette = "Set2") +
+  #scale_fill_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(text = element_text(size = 12),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.position = "none")
+
+water.dat <- ggplot_build(water.p)$data[[1]]
+
+water.p <- water.p + 
+  geom_segment(data=water.dat, aes(x=xmin, xend=xmax, 
+                               y=middle, yend=middle), colour="white", size=1) +
+  geom_jitter(color = "gray25", width = 0.1, height = 0, size = 1) 
+
+water.p
+
+ggsave("../../fig_1_C_reord.pdf")
+
+```
+```{r}
+
+# Comparing vOTU richness to metadata with mantel test
+library("vegan")
+v.otu <- read.csv("../Data/210201_natres_norm.csv", header = T)
+row.names(v.otu) <- v.otu$contig
+v.otu <- v.otu[,-1]
+v.otu <- v.otu[,colnames(v.otu) %in% map$SampleID]
+v.otu <- v.otu[rowSums(v.otu)>0,]
+colnames(v.otu) <- gsub("_S.*", "", colnames(v.otu))
+
+jac_votu <- vegdist(t(v.otu), method="jaccard", na.rm=T)
+
+meta <- read.csv("../Data/WARD.csv", stringsAsFactors = F)
+rownames(meta) <- meta$SampleID
+meta <- meta %>%
+  dplyr::select_if(is.numeric) %>% 
+  dplyr::select(-Texture) %>%
+  filter(str_detect(rownames(meta), "BB_6", negate=T))
+
+jac_meta <- vegdist(meta, method="jaccard", na.rm=T)
+
+# Trying to control for gerographic distance
+library("geosphere")
+dis <- read.csv("../Data/dist_sites.csv", stringsAsFactors = F)
+mat_distance <- distm(dis[,c('Long','Lat')], dis[,c('Long','Lat')], fun=distHaversine)
+
+mantel(jac_votu, jac_meta, method="spearman", permutations=100)
+mantel.partial(jac_votu, jac_meta, mat_distance, method="spearman", permutations=100)
+
+WC <- WC %>%
+  dplyr::select(c("SampleID", "Water_content"))
+
+meta <- meta %>%
+  rownames_to_column(var="SampleID") %>%
+  inner_join(WC, by="SampleID") %>%
+  column_to_rownames(var="SampleID")
+
+jac_meta <- vegdist(meta, method="jaccard", na.rm=T)
+
+
+# Attempted NMDS, failed with this error: Warning in metaMDS(jac_votu, k = 2) :
+# stress is (nearly) zero: you may have insufficient data
+vare.mds <- metaMDS(t(v.otu), k=2, noshare = 0.2)
+data.scores <- as.data.frame(scores(vare.mds))  #Using the scores function from vegan to extract the site scores and convert to a data.frame
+data.scores$site <- rownames(data.scores)  # create a column of site names, from the rownames of data.scores
+data.scores$grp <- grp  #  add the grp variable created earlier
+head(data.scores)
+
+# upset plot
+WC <- read.csv("../Data/Soil_Moisture_NatRes.csv", stringsAsFactors = F) %>% 
+  filter(Habitat != "bluff") %>% 
+  mutate(Habitat = fct_relevel(Habitat, "wetland", "grassland", "chaparral", "woodland"))
+WC <- rename(WC, SampleID = sample)
+WC$SampleID <- toupper(WC$SampleID)
+WC$SampleID <- gsub(" ", "_", gsub("-", "_", WC$SampleID))
+
+v.otu.bin <- t(v.otu) %>% data.frame()
+v.otu.bin[v.otu.bin>0] <- 1
+rownames(v.otu.bin) <- toupper(rownames(v.otu.bin))
+
+v.otu.bin.t <- t(v.otu.bin) %>% data.frame()
+
+cs <- colSums(v.otu.bin.t)
+set_wtl <- names(cs)[order(cs[match(WC$SampleID[WC$Habitat=="wetland"], names(cs))], decreasing=T)]
+set_wdl <- names(cs)[order(cs[match(WC$SampleID[WC$Habitat=="woodland"], names(cs))], decreasing=T)]
+set_chp <- names(cs)[order(cs[match(WC$SampleID[WC$Habitat=="chaparral"], names(cs))], decreasing=T)]
+set_grs <- names(cs)[order(cs[match(WC$SampleID[WC$Habitat=="grassland"], names(cs))], decreasing=T)]
+ord <- c(set_wtl, set_grs, set_chp, set_wdl)
+v.otu.bin.t <- v.otu.bin.t %>% relocate(ord)
+
+upset(v.otu.bin.t, intersect=WC$SampleID, min_degree=1, sort_intersections_by=c("degree", "cardinality"),
+  sort_sets=FALSE, sort_intersections='ascending', width_ratio=0.3, max_degree=1, matrix=(
+        intersection_matrix(geom=geom_point(shape='circle filled', size=2))), queries=list(
+       upset_query(set="BB_1_1", fill="#E78AC3"),
+       upset_query(set="BB_1_2", fill="#E78AC3"),
+       upset_query(set="BB_2_1", fill="#E78AC3"),
+       upset_query(set="BB_2_2", fill="#E78AC3"),
+       upset_query(set="BB_3_1", fill="#E78AC3"),
+       upset_query(set="JP_3_1", fill="#E78AC3"),
+       upset_query(set="JP_3_2", fill="#E78AC3"),
+       upset_query(set="MCL_1_1", fill="#8DA0CB"),
+       upset_query(set="MCL_1_2", fill="#8DA0CB"),
+       upset_query(set="QR_2_2", fill="#8DA0CB"),
+       upset_query(set="SCC_2_1", fill="#8DA0CB"),
+       upset_query(set="SCC_2_2", fill="#8DA0CB"),
+       upset_query(set="MCL_6_1", fill="#FC8D62"),
+       upset_query(set="MCL_6_2", fill="#FC8D62"),
+       upset_query(set="QR_1_1", fill="#FC8D62"),
+       upset_query(set="QR_1_2", fill="#FC8D62"),
+       upset_query(set="BB_4_1", fill="#66C2A5"),
+       upset_query(set="BB_4_2", fill="#66C2A5"),
+       upset_query(set="BB_5_1", fill="#66C2A5"),
+       upset_query(set="BB_5_2", fill="#66C2A5"),
+       upset_query(set="JP_1_1", fill="#66C2A5"),
+       upset_query(set="JP_1_2", fill="#66C2A5"),
+       upset_query(set="JP_2_2", fill="#66C2A5"),
+       upset_query(set="MCL_3_1", fill="#66C2A5"),
+       upset_query(set="MCL_3_2", fill="#66C2A5"),
+       upset_query(set="MCL_5_1", fill="#66C2A5"),
+       upset_query(set="MCL_5_2", fill="#66C2A5"),
+       upset_query(set="SCC_1_1", fill="#66C2A5"),
+       upset_query(set="SCC_1_2", fill="#66C2A5")
+    )
+  )
+ggsave("../../Nat_Res_upset_mindeg1_maxdeg1.pdf", width=8, height=8, units="in")
+
+upset(v.otu.bin.t, intersect=WC$SampleID, min_degree=2, sort_intersections_by=c("degree", "cardinality"),
+  sort_sets=FALSE, sort_intersections='ascending', width_ratio=0.2, matrix=(
+        intersection_matrix(geom=geom_point(shape='circle filled', size=2))),
+  queries=list(
+       upset_query(set="BB_1_1", fill="#E78AC3"),
+       upset_query(set="BB_1_2", fill="#E78AC3"),
+       upset_query(set="BB_2_1", fill="#E78AC3"),
+       upset_query(set="BB_2_2", fill="#E78AC3"),
+       upset_query(set="BB_3_1", fill="#E78AC3"),
+       upset_query(set="JP_3_1", fill="#E78AC3"),
+       upset_query(set="JP_3_2", fill="#E78AC3"),
+       upset_query(set="MCL_1_1", fill="#8DA0CB"),
+       upset_query(set="MCL_1_2", fill="#8DA0CB"),
+       upset_query(set="QR_2_2", fill="#8DA0CB"),
+       upset_query(set="SCC_2_1", fill="#8DA0CB"),
+       upset_query(set="SCC_2_2", fill="#8DA0CB"),
+       upset_query(set="MCL_6_1", fill="#FC8D62"),
+       upset_query(set="MCL_6_2", fill="#FC8D62"),
+       upset_query(set="QR_1_1", fill="#FC8D62"),
+       upset_query(set="QR_1_2", fill="#FC8D62"),
+       upset_query(set="BB_4_1", fill="#66C2A5"),
+       upset_query(set="BB_4_2", fill="#66C2A5"),
+       upset_query(set="BB_5_1", fill="#66C2A5"),
+       upset_query(set="BB_5_2", fill="#66C2A5"),
+       upset_query(set="JP_1_1", fill="#66C2A5"),
+       upset_query(set="JP_2_1", fill="#66C2A5"),
+       upset_query(set="JP_1_2", fill="#66C2A5"),
+       upset_query(set="JP_2_2", fill="#66C2A5"),
+       upset_query(set="MCL_3_1", fill="#66C2A5"),
+       upset_query(set="MCL_3_2", fill="#66C2A5"),
+       upset_query(set="MCL_5_1", fill="#66C2A5"),
+       upset_query(set="MCL_5_2", fill="#66C2A5"),
+       upset_query(set="SCC_1_2", fill="#66C2A5")
+    )
+  )
+ggsave("../../Nat_Res_upset_mindeg2.pdf", width=8, height=6, units="in")
+```
+
+```{r}
+# Creating supplemental map figure
+library(mapview)
+library(sp)
+library(sf)
+m <- mapview(dis, xcol = "Long", ycol = "Lat", crs = 4269, grid = FALSE, color="blue")
+mapshot(m, file = "../../revision/sup_fig_map.pdf")
+
+dis <- dis %>%
+  mutate(Sample = gsub(" ", "_", gsub("-", "_", Sample))) %>%
+  mutate(Sample = toupper(Sample)) %>%
+  rename(SampleID = Sample) %>%
+  left_join(WC, by="SampleID")
+
+# BB zoom in
+temp_wtl <- dis[dis$SampleID %like% "BB" & dis$Habitat == "wetland",]
+temp_wdl <- dis[dis$SampleID %like% "BB" & dis$Habitat == "woodland",]
+temp_chp <- dis[dis$SampleID %like% "BB" & dis$Habitat == "chaparral",]
+temp_grs <- dis[dis$SampleID %like% "BB" & dis$Habitat == "grassland",]
+m <- mapview(temp_wtl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#E78AC3", col.regions="#E78AC3") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
+mapshot(m, file = "../../revision/sup_fig_map_BB.pdf_grid", remove_controls = c("homeButton", "layersControl"))
+
+# JP zoom in
+temp_wtl <- dis[dis$SampleID %like% "JP" & dis$Habitat == "wetland",]
+temp_wdl <- dis[dis$SampleID %like% "JP" & dis$Habitat == "woodland",]
+temp_chp <- dis[dis$SampleID %like% "JP" & dis$Habitat == "chaparral",]
+temp_grs <- dis[dis$SampleID %like% "JP" & dis$Habitat == "grassland",]
+m <- mapview(temp_wtl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#E78AC3", col.regions="#E78AC3") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
+mapshot(m, file = "../../revision/sup_fig_map_JP_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+
+# MCL zoom in
+temp_wtl <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "wetland",]
+temp_wdl <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "woodland",]
+temp_chp <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "chaparral",]
+temp_grs <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "grassland",]
+m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + 
+  mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5") + 
+  mapview(temp_chp, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#FC8D62", col.regions="#FC8D62")
+mapshot(m, file = "../../revision/sup_fig_map_MCL_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+
+# QR zoom in
+temp_wtl <- dis[dis$SampleID %like% "QR" & dis$Habitat == "wetland",]
+temp_wdl <- dis[dis$SampleID %like% "QR" & dis$Habitat == "woodland",]
+temp_chp <- dis[dis$SampleID %like% "QR" & dis$Habitat == "chaparral",]
+temp_grs <- dis[dis$SampleID %like% "QR" & dis$Habitat == "grassland",]
+m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + 
+  mapview(temp_chp, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#FC8D62", col.regions="#FC8D62")
+mapshot(m, file = "../../revision/sup_fig_map_QR_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+
+# SCC zoom in
+temp_wtl <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "wetland",]
+temp_wdl <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "woodland",]
+temp_chp <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "chaparral",]
+temp_grs <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "grassland",]
+m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
+mapshot(m, file = "../../revision/sup_fig_map_SCC_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+```
+
