@@ -10,4 +10,5 @@ Due to the amount of vOTUs (3432 in total), the fasta file containing them was b
 The vOTUs were enerated by identifying viral contigs in metagenomes with VIBRANT (Kieft et al.), and clustering them with cd-hit-est at 95% identity and 85% coverage of the shortest contig. The longest contig of each cluster was chosen to represent that cluster.
 
 Bioinformatic analyses R scripts and data files can be found in the Analysis folder.
-Many thanks to Christian Santos-Medellin for developing the original scripts adjusted to this study.
+
+Many thanks to Christian Santos-Medellin for developing the original scripts adjusted for this study.
