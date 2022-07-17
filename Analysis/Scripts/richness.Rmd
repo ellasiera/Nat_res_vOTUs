@@ -5,6 +5,7 @@ source("../General/general_functions.R")
 library(tidyverse)
 library(RColorBrewer)
 library(ComplexUpset)
+library(vegan)
 ```
 
 Load mapping file and vOTU data and reformat
@@ -261,6 +262,14 @@ meta <- meta %>%
 
 jac_meta <- vegdist(meta, method="jaccard", na.rm=T)
 
+meta_WC <- meta %>%
+  rownames_to_column("SampleID") %>%
+  left_join(WC, by="SampleID") %>%
+  select(-c(Water_weight)) %>%
+  column_to_rownames("SampleID")
+
+adonis2(t(v.otu) ~ ., data=meta_WC)
+
 # Trying to control for gerographic distance
 library("geosphere")
 dis <- read.csv("../Data/dist_sites.csv", stringsAsFactors = F)
@@ -385,6 +394,76 @@ ggsave("../../Nat_Res_upset_mindeg2.pdf", width=8, height=6, units="in")
 ```
 
 ```{r}
+# Beta diversity
+dist <- vegdist(t(v.otu), method="jaccard")
+pcoa_jac <- pcoa(dist) # Creating the PCoA object
+jac_variances <- data.frame(pcoa_jac$values$Relative_eig) %>% # Calculating the coordinates of each sample on a multidimensional PCoA plot
+  rownames_to_column(var = "PCaxis") %>% 
+  data.frame
+pcoa_jac_df <- data.frame(pcoa_jac$vectors) %>% # creating a data frame of the coordinates
+  rownames_to_column(var = "SampleID") %>% # Creating a column from the rownames. The rownames are the SRR number
+  data.frame %>%
+  mutate(SampleID = toupper(SampleID)) %>%
+  mutate(SampleID = gsub("_S[.[0-9]*$", "", SampleID)) %>%
+  left_join(WC, by="SampleID") %>% # Merging with the habitat table
+  mutate(Habitat = fct_relevel(Habitat, levels=c("grassland", "chaparral", "woodland", "wetland")))
+
+eigenvalues<-round(jac_variances[,2], digits = 4)*100 # Rounding the variance explained by each PCoA axis to 2 decimals
+
+ggplot(pcoa_jac_df) + # Plot the PCoA
+  geom_point(aes(x = Axis.1, y = Axis.2, color=Habitat), size = 1) +
+  ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
+  xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
+  ggtitle('vOTU clustering by habitat') +
+  coord_fixed(ratio = 1) +
+  theme_bw() + scale_color_manual(values=c(brewer.pal(n=4, "Set2")))
+ggsave("PCoA_habitat.pdf")
+
+# Color by site
+ggplot(pcoa_jac_df) + # Plot the PCoA
+  geom_point(aes(x = Axis.1, y = Axis.2, color=natres_site), size = 1) +
+  ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
+  xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
+  ggtitle('vOTU clustering by site') +
+  coord_fixed(ratio = 1) +
+  theme_bw() + scale_color_manual(values=c(brewer.pal(n=5, "Paired")))
+ggsave("PCoA_site.pdf")
+
+# CAP analysis
+rownames(pcoa_jac_df) <- pcoa_jac_df$SampleID
+cps <- capscale(dist ~ Habitat, data=pcoa_jac_df)
+cps_gg <- scores(cps, tidy=T) %>%
+  mutate(natres_site = gsub("_.*$", "", label))
+cps_gg_sites <- cps_gg %>%
+  filter(score == "sites")
+cps_gg_cent <- cps_gg %>%
+  filter(score == "centroids")
+ggplot(data=cps_gg_sites, aes(x=CAP1, y=CAP2)) + 
+  geom_point(aes(color=natres_site)) + 
+  scale_color_brewer(palette="Paired")
+
+cps_gg_sites <- cps_gg_sites %>%
+  mutate(SampleID = toupper(gsub("_S[0-9]*$", "", label))) %>%
+  left_join(WC[,c("SampleID", "Habitat"),], by="SampleID") %>%
+  mutate(Habitat = fct_relevel(Habitat, levels=c("grassland", "chaparral", "woodland", "wetland")))
+ggplot(cps_gg_sites, aes(x= CAP1, y= CAP2, color = Habitat)) + 
+  stat_ellipse(aes(fill = Habitat), geom = "polygon", alpha = 0.2) +
+  geom_point() +
+  theme_classic() + 
+  geom_hline(yintercept = 0, linetype="dotted") + 
+  geom_vline(xintercept = 0, linetype="dotted") +
+  labs(color = "Habitat", fill = "Habitat") +
+  ggtitle("Capscale Analysis") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("CAP2") + 
+  xlab("CAP1") + 
+  scale_color_manual(values=c(brewer.pal(n=4, "Set2"))) + 
+  scale_fill_manual(values=c(brewer.pal(n=4, "Set2")))
+ggsave("../../revision/CAP_habitat.pdf")
+```
+
+
+```{r}
 # Creating supplemental map figure
 library(mapview)
 library(sp)
@@ -404,7 +483,7 @@ temp_wdl <- dis[dis$SampleID %like% "BB" & dis$Habitat == "woodland",]
 temp_chp <- dis[dis$SampleID %like% "BB" & dis$Habitat == "chaparral",]
 temp_grs <- dis[dis$SampleID %like% "BB" & dis$Habitat == "grassland",]
 m <- mapview(temp_wtl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#E78AC3", col.regions="#E78AC3") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
-mapshot(m, file = "../../revision/sup_fig_map_BB.pdf_grid", remove_controls = c("homeButton", "layersControl"))
+mapshot(m, file = "../../revision/sup_fig_map_BB_grid.pdf", remove_controls = c("zoomControl", "layersControl", "homeButton", "drawToolbar", "easyButton"))
 
 # JP zoom in
 temp_wtl <- dis[dis$SampleID %like% "JP" & dis$Habitat == "wetland",]
@@ -412,7 +491,7 @@ temp_wdl <- dis[dis$SampleID %like% "JP" & dis$Habitat == "woodland",]
 temp_chp <- dis[dis$SampleID %like% "JP" & dis$Habitat == "chaparral",]
 temp_grs <- dis[dis$SampleID %like% "JP" & dis$Habitat == "grassland",]
 m <- mapview(temp_wtl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#E78AC3", col.regions="#E78AC3") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
-mapshot(m, file = "../../revision/sup_fig_map_JP_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+mapshot(m, file = "../../revision/sup_fig_map_JP_grid.pdf", remove_controls = c("zoomControl", "layersControl", "homeButton", "drawToolbar", "easyButton"))
 
 # MCL zoom in
 temp_wtl <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "wetland",]
@@ -422,7 +501,7 @@ temp_grs <- dis[dis$SampleID %like% "MCL" & dis$Habitat == "grassland",]
 m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + 
   mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5") + 
   mapview(temp_chp, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#FC8D62", col.regions="#FC8D62")
-mapshot(m, file = "../../revision/sup_fig_map_MCL_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+mapshot(m, file = "../../revision/sup_fig_map_MCL_grid.pdf", remove_controls = c("zoomControl", "layersControl", "homeButton", "drawToolbar", "easyButton"))
 
 # QR zoom in
 temp_wtl <- dis[dis$SampleID %like% "QR" & dis$Habitat == "wetland",]
@@ -431,7 +510,7 @@ temp_chp <- dis[dis$SampleID %like% "QR" & dis$Habitat == "chaparral",]
 temp_grs <- dis[dis$SampleID %like% "QR" & dis$Habitat == "grassland",]
 m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + 
   mapview(temp_chp, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#FC8D62", col.regions="#FC8D62")
-mapshot(m, file = "../../revision/sup_fig_map_QR_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+mapshot(m, file = "../../revision/sup_fig_map_QR_grid.pdf", remove_controls = c("zoomControl", "layersControl", "homeButton", "drawToolbar", "easyButton"))
 
 # SCC zoom in
 temp_wtl <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "wetland",]
@@ -439,6 +518,6 @@ temp_wdl <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "woodland",]
 temp_chp <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "chaparral",]
 temp_grs <- dis[dis$SampleID %like% "SCC" & dis$Habitat == "grassland",]
 m <- mapview(temp_wdl, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#8DA0CB", col.regions="#8DA0CB") + mapview(temp_grs, xcol = "Long", ycol = "Lat", crs = 4269, grid = TRUE, color="#66C2A5", col.regions="#66C2A5")
-mapshot(m, file = "../../revision/sup_fig_map_SCC_grid.pdf", remove_controls = c("homeButton", "layersControl"))
+mapshot(m, file = "../../revision/sup_fig_map_SCC_grid.pdf", remove_controls = c("zoomControl", "layersControl", "homeButton", "drawToolbar", "easyButton"))
 ```
 
